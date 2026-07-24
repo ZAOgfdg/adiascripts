@@ -1,5 +1,5 @@
--- // AIDA CHEAT v5.2 – by Zao
--- // Fixed ESP, Chams, Watermark
+-- // AIDA CHEAT v5.3 – FOV Circle + RMB Activation
+-- // by Zao
 
 local function AidaCheat()
     -- // ─── Загрузка библиотек ──────────────────────────────────
@@ -16,7 +16,17 @@ local function AidaCheat()
 
     -- // ─── Состояния ──────────────────────────────────────────
     local State = {
-        Aimbot = { Enabled = false, FOV = 120, Smoothness = 0, Part = "Head", TeamCheck = false, WallCheck = false },
+        Aimbot = {
+            Enabled = false,
+            FOV = 120,
+            Smoothness = 0,
+            Part = "Head",
+            TeamCheck = false,
+            WallCheck = false,
+            ShowFOV = true,        -- показывать круг
+            FOVColor = Color3.fromRGB(255, 255, 255),
+            FOVTransparency = 0.5
+        },
         Spinbot = { Enabled = false, Speed = 45, Direction = 1 },
         ESP = {
             Enabled = false,
@@ -31,25 +41,27 @@ local function AidaCheat()
         }
     }
 
-    -- // ─── Переменные для модулей ─────────────────────────────
+    -- // ─── Переменные ──────────────────────────────────────────
     local SpinAngle = 0
     local ESPDrawings = {}
     local ChamsHighlights = {}
     local MainLoopConnection = nil
     local Watermark = nil
+    local FOVCircle = nil
+    local RMBPressed = false   -- состояние правой кнопки мыши
 
     -- // ─── GUI: Окно ──────────────────────────────────────────
     local Window = Fluent:CreateWindow({
-        Title = "✦ AIDA CHEAT v5.2",
+        Title = "✦ AIDA CHEAT v5.3",
         SubTitle = "by Zao",
         TabWidth = 130,
-        Size = UDim2.fromOffset(540, 480),
+        Size = UDim2.fromOffset(540, 520),
         Acrylic = false,
         Theme = "Dark",
         MinimizeKey = Enum.KeyCode.LeftControl
     })
 
-    -- // ─── Водяной знак "by Zao" в правом нижнем углу ────────
+    -- // ─── Водяной знак ──────────────────────────────────────
     local function CreateWatermark()
         local gui = LocalPlayer:WaitForChild("PlayerGui")
         Watermark = Instance.new("TextLabel")
@@ -68,11 +80,41 @@ local function AidaCheat()
         Watermark.Visible = true
     end
 
-    -- // ─── Удаление водяного знака при выгрузке ──────────────
     local function DestroyWatermark()
-        if Watermark then
-            pcall(function() Watermark:Destroy() end)
-            Watermark = nil
+        if Watermark then pcall(function() Watermark:Destroy() end) end
+        Watermark = nil
+    end
+
+    -- // ─── FOV Круг ────────────────────────────────────────────
+    local function CreateFOVCircle()
+        if FOVCircle then return end
+        FOVCircle = Drawing.new("Circle")
+        FOVCircle.Visible = false
+        FOVCircle.Radius = State.Aimbot.FOV
+        FOVCircle.Color = State.Aimbot.FOVColor
+        FOVCircle.Transparency = State.Aimbot.FOVTransparency
+        FOVCircle.NumSides = 60
+        FOVCircle.Filled = false
+        FOVCircle.Thickness = 1
+    end
+
+    local function UpdateFOVCircle()
+        if not FOVCircle then return end
+        if State.Aimbot.ShowFOV and State.Aimbot.Enabled then
+            FOVCircle.Visible = true
+            FOVCircle.Radius = State.Aimbot.FOV
+            FOVCircle.Position = UserInputService:GetMouseLocation()
+            FOVCircle.Color = State.Aimbot.FOVColor
+            FOVCircle.Transparency = State.Aimbot.FOVTransparency
+        else
+            FOVCircle.Visible = false
+        end
+    end
+
+    local function DestroyFOVCircle()
+        if FOVCircle then
+            pcall(function() FOVCircle:Remove() end)
+            FOVCircle = nil
         end
     end
 
@@ -81,9 +123,14 @@ local function AidaCheat()
     local AimbotSection = AimbotTab:AddSection("Main")
 
     local AimbotToggle = AimbotSection:AddToggle("AimbotEnabled", {
-        Title = "Enable Aimbot",
+        Title = "Enable Aimbot (hold RMB)",
         Default = false,
-        Callback = function(v) State.Aimbot.Enabled = v end
+        Callback = function(v) 
+            State.Aimbot.Enabled = v
+            if not v then
+                FOVCircle.Visible = false
+            end
+        end
     })
 
     AimbotSection:AddSlider("AimbotFOV", {
@@ -92,7 +139,10 @@ local function AidaCheat()
         Min = 10,
         Max = 360,
         Rounding = 0,
-        Callback = function(v) State.Aimbot.FOV = v end
+        Callback = function(v) 
+            State.Aimbot.FOV = v
+            if FOVCircle then FOVCircle.Radius = v end
+        end
     })
 
     AimbotSection:AddSlider("AimbotSmooth", {
@@ -121,6 +171,38 @@ local function AidaCheat()
         Title = "Wall Check",
         Default = false,
         Callback = function(v) State.Aimbot.WallCheck = v end
+    })
+
+    -- // FOV настройки
+    local FOVSection = AimbotTab:AddSection("FOV Circle")
+    local FOVToggle = FOVSection:AddToggle("ShowFOV", {
+        Title = "Show FOV Circle",
+        Default = true,
+        Callback = function(v)
+            State.Aimbot.ShowFOV = v
+            if not v and FOVCircle then FOVCircle.Visible = false end
+        end
+    })
+
+    local FOVColorPicker = FOVSection:AddColorpicker("FOVColor", {
+        Title = "FOV Color",
+        Default = State.Aimbot.FOVColor,
+        Callback = function(v)
+            State.Aimbot.FOVColor = v
+            if FOVCircle then FOVCircle.Color = v end
+        end
+    })
+
+    FOVSection:AddSlider("FOVTransparency", {
+        Title = "FOV Transparency",
+        Default = 0.5,
+        Min = 0,
+        Max = 1,
+        Rounding = 2,
+        Callback = function(v)
+            State.Aimbot.FOVTransparency = v
+            if FOVCircle then FOVCircle.Transparency = v end
+        end
     })
 
     -- // ─── Вкладка Spinbot ──────────────────────────────────────
@@ -161,7 +243,6 @@ local function AidaCheat()
         Callback = function(v)
             State.ESP.Enabled = v
             if not v then
-                -- Полная очистка ESP-объектов
                 for player, obj in pairs(ESPDrawings) do
                     for _, draw in pairs(obj) do
                         pcall(function() draw:Remove() end)
@@ -343,22 +424,16 @@ local function AidaCheat()
     -- // ─── Обновление ESP ──────────────────────────────────────
     local function UpdateESP()
         if not State.ESP.Enabled then
-            -- удаляем все, если остались
             for player, _ in pairs(ESPDrawings) do
                 RemoveESPObjects(player)
             end
             return
         end
 
-        -- Создаём для новых игроков
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer then
-                if not ESPDrawings[player] then
-                    CreateESPObjects(player)
-                end
-                if State.ESP.Chams and not ChamsHighlights[player] then
-                    ApplyChams(player)
-                end
+                if not ESPDrawings[player] then CreateESPObjects(player) end
+                if State.ESP.Chams and not ChamsHighlights[player] then ApplyChams(player) end
                 if not State.ESP.Chams and ChamsHighlights[player] then
                     pcall(function() ChamsHighlights[player]:Destroy() end)
                     ChamsHighlights[player] = nil
@@ -366,14 +441,10 @@ local function AidaCheat()
             end
         end
 
-        -- Удаляем для исчезнувших
         for player, _ in pairs(ESPDrawings) do
-            if not Players:FindFirstChild(player.Name) then
-                RemoveESPObjects(player)
-            end
+            if not Players:FindFirstChild(player.Name) then RemoveESPObjects(player) end
         end
 
-        -- Обновление позиций
         for player, drawings in pairs(ESPDrawings) do
             if player == LocalPlayer then
                 for _, obj in pairs(drawings) do obj.Visible = false end
@@ -495,7 +566,13 @@ local function AidaCheat()
 
     -- // ─── Главный цикл ──────────────────────────────────────────
     local function MainLoop()
-        if State.Aimbot.Enabled then
+        -- Обновляем FOV круг
+        UpdateFOVCircle()
+
+        -- Aimbot активен только если включен в GUI и зажата ПКМ
+        local aimbotActive = State.Aimbot.Enabled and RMBPressed
+
+        if aimbotActive then
             local target = FindTarget()
             if target and target.Character then
                 local part = target.Character:FindFirstChild(State.Aimbot.Part)
@@ -518,8 +595,24 @@ local function AidaCheat()
         UpdateESP()
     end
 
+    -- // ─── Обработка ввода (ПКМ) ──────────────────────────────
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            RMBPressed = true
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            RMBPressed = false
+        end
+    end)
+
     -- // ─── Запуск и очистка ──────────────────────────────────────
     CreateWatermark()
+    CreateFOVCircle()
 
     MainLoopConnection = RunService.RenderStepped:Connect(MainLoop)
 
@@ -539,6 +632,7 @@ local function AidaCheat()
                 pcall(function() hl:Destroy() end)
             end
             ChamsHighlights = {}
+            DestroyFOVCircle()
             DestroyWatermark()
             Window:Destroy()
             print("AIDA CHEAT выгружен")
@@ -558,9 +652,9 @@ local function AidaCheat()
 
     Window:SelectTab(1)
     Fluent:Notify({
-        Title = "AIDA CHEAT v5.2",
-        Content = "by Zao | Insert – меню, End – выгрузить.",
-        Duration = 4
+        Title = "AIDA CHEAT v5.3",
+        Content = "by Zao | Insert – меню, End – выгрузить.\nАимбот активируется зажатием ПКМ",
+        Duration = 5
     })
 
     SaveManager:LoadAutoloadConfig()
