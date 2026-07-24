@@ -1,5 +1,5 @@
--- // AIDA CHEAT v5.3 – FOV Circle + RMB Activation
--- // by Zao
+-- // AIDA CHEAT v5.4 – by Zao
+-- // Aimbot (оригинальный), Spinbot, ESP, FOV Circle
 
 local function AidaCheat()
     -- // ─── Загрузка библиотек ──────────────────────────────────
@@ -14,19 +14,234 @@ local function AidaCheat()
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
 
-    -- // ─── Состояния ──────────────────────────────────────────
-    local State = {
-        Aimbot = {
-            Enabled = false,
-            FOV = 120,
-            Smoothness = 0,
-            Part = "Head",
+    -- // ─── ВСТАВЛЯЕМ ОРИГИНАЛЬНЫЙ АИМБОТ ──────────────────────
+    --// Cache
+    local select = select
+    local pcall, getgenv, next, Vector2, mathclamp, type, mousemoverel = select(1, pcall, getgenv, next, Vector2.new, math.clamp, type, mousemoverel or (Input and Input.MouseMove))
+
+    --// Preventing Multiple Processes
+    pcall(function()
+        getgenv().Aimbot.Functions:Exit()
+    end)
+
+    --// Environment
+    getgenv().Aimbot = {}
+    local Environment = getgenv().Aimbot
+
+    --// Services (уже объявлены выше, но для совместимости оставляем)
+    local RunService = RunService
+    local UserInputService = UserInputService
+    local TweenService = game:GetService("TweenService")
+    local Players = Players
+    local Camera = Camera
+    local LocalPlayer = LocalPlayer
+
+    --// Variables
+    local RequiredDistance, Typing, Running, Animation, ServiceConnections = 2000, false, false, nil, {}
+
+    --// Script Settings (будут переопределены через GUI)
+    Environment.Settings = {
+        Enabled = true,
+        TeamCheck = false,
+        AliveCheck = true,
+        WallCheck = false,
+        Sensitivity = 0,
+        ThirdPerson = false,
+        ThirdPersonSensitivity = 3,
+        TriggerKey = "MouseButton2",
+        Toggle = false,
+        LockPart = "Head"
+    }
+
+    Environment.FOVSettings = {
+        Enabled = true,
+        Visible = true,
+        Amount = 90,
+        Color = Color3.fromRGB(255, 255, 255),
+        LockedColor = Color3.fromRGB(255, 70, 70),
+        Transparency = 0.5,
+        Sides = 60,
+        Thickness = 1,
+        Filled = false
+    }
+
+    Environment.FOVCircle = Drawing.new("Circle")
+
+    --// Functions
+    local function CancelLock()
+        Environment.Locked = nil
+        if Animation then Animation:Cancel() end
+        Environment.FOVCircle.Color = Environment.FOVSettings.Color
+    end
+
+    local function GetClosestPlayer()
+        if not Environment.Locked then
+            RequiredDistance = (Environment.FOVSettings.Enabled and Environment.FOVSettings.Amount or 2000)
+
+            for _, v in next, Players:GetPlayers() do
+                if v ~= LocalPlayer then
+                    if v.Character and v.Character:FindFirstChild(Environment.Settings.LockPart) and v.Character:FindFirstChildOfClass("Humanoid") then
+                        if Environment.Settings.TeamCheck and v.Team == LocalPlayer.Team then continue end
+                        if Environment.Settings.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then continue end
+                        if Environment.Settings.WallCheck and #(Camera:GetPartsObscuringTarget({v.Character[Environment.Settings.LockPart].Position}, v.Character:GetDescendants())) > 0 then continue end
+
+                        local Vector, OnScreen = Camera:WorldToViewportPoint(v.Character[Environment.Settings.LockPart].Position)
+                        local Distance = (Vector2(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) - Vector2(Vector.X, Vector.Y)).Magnitude
+
+                        if Distance < RequiredDistance and OnScreen then
+                            RequiredDistance = Distance
+                            Environment.Locked = v
+                        end
+                    end
+                end
+            end
+        elseif (Vector2(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) - Vector2(Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position).X, Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position).Y)).Magnitude > RequiredDistance then
+            CancelLock()
+        end
+    end
+
+    --// Typing Check
+    ServiceConnections.TypingStartedConnection = UserInputService.TextBoxFocused:Connect(function()
+        Typing = true
+    end)
+
+    ServiceConnections.TypingEndedConnection = UserInputService.TextBoxFocusReleased:Connect(function()
+        Typing = false
+    end)
+
+    --// Main
+    local function Load()
+        ServiceConnections.RenderSteppedConnection = RunService.RenderStepped:Connect(function()
+            if Environment.FOVSettings.Enabled and Environment.Settings.Enabled then
+                Environment.FOVCircle.Radius = Environment.FOVSettings.Amount
+                Environment.FOVCircle.Thickness = Environment.FOVSettings.Thickness
+                Environment.FOVCircle.Filled = Environment.FOVSettings.Filled
+                Environment.FOVCircle.NumSides = Environment.FOVSettings.Sides
+                Environment.FOVCircle.Color = Environment.FOVSettings.Color
+                Environment.FOVCircle.Transparency = Environment.FOVSettings.Transparency
+                Environment.FOVCircle.Visible = Environment.FOVSettings.Visible
+                Environment.FOVCircle.Position = Vector2(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
+            else
+                Environment.FOVCircle.Visible = false
+            end
+
+            if Running and Environment.Settings.Enabled then
+                GetClosestPlayer()
+
+                if Environment.Locked then
+                    if Environment.Settings.ThirdPerson then
+                        Environment.Settings.ThirdPersonSensitivity = mathclamp(Environment.Settings.ThirdPersonSensitivity, 0.1, 5)
+
+                        local Vector = Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position)
+                        mousemoverel((Vector.X - UserInputService:GetMouseLocation().X) * Environment.Settings.ThirdPersonSensitivity, (Vector.Y - UserInputService:GetMouseLocation().Y) * Environment.Settings.ThirdPersonSensitivity)
+                    else
+                        if Environment.Settings.Sensitivity > 0 then
+                            Animation = TweenService:Create(Camera, TweenInfo.new(Environment.Settings.Sensitivity, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(Camera.CFrame.Position, Environment.Locked.Character[Environment.Settings.LockPart].Position)})
+                            Animation:Play()
+                        else
+                            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Environment.Locked.Character[Environment.Settings.LockPart].Position)
+                        end
+                    end
+
+                    Environment.FOVCircle.Color = Environment.FOVSettings.LockedColor
+                end
+            end
+        end)
+
+        ServiceConnections.InputBeganConnection = UserInputService.InputBegan:Connect(function(Input)
+            if not Typing then
+                pcall(function()
+                    if Input.KeyCode == Enum.KeyCode[Environment.Settings.TriggerKey] then
+                        if Environment.Settings.Toggle then
+                            Running = not Running
+                            if not Running then CancelLock() end
+                        else
+                            Running = true
+                        end
+                    end
+                end)
+
+                pcall(function()
+                    if Input.UserInputType == Enum.UserInputType[Environment.Settings.TriggerKey] then
+                        if Environment.Settings.Toggle then
+                            Running = not Running
+                            if not Running then CancelLock() end
+                        else
+                            Running = true
+                        end
+                    end
+                end)
+            end
+        end)
+
+        ServiceConnections.InputEndedConnection = UserInputService.InputEnded:Connect(function(Input)
+            if not Typing then
+                if not Environment.Settings.Toggle then
+                    pcall(function()
+                        if Input.KeyCode == Enum.KeyCode[Environment.Settings.TriggerKey] then
+                            Running = false; CancelLock()
+                        end
+                    end)
+
+                    pcall(function()
+                        if Input.UserInputType == Enum.UserInputType[Environment.Settings.TriggerKey] then
+                            Running = false; CancelLock()
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+
+    Environment.Functions = {}
+
+    function Environment.Functions:Exit()
+        for _, v in next, ServiceConnections do
+            v:Disconnect()
+        end
+        if Environment.FOVCircle.Remove then Environment.FOVCircle:Remove() end
+        getgenv().Aimbot.Functions = nil
+        getgenv().Aimbot = nil
+        Load = nil; GetClosestPlayer = nil; CancelLock = nil
+    end
+
+    function Environment.Functions:Restart()
+        for _, v in next, ServiceConnections do
+            v:Disconnect()
+        end
+        Load()
+    end
+
+    function Environment.Functions:ResetSettings()
+        Environment.Settings = {
+            Enabled = true,
             TeamCheck = false,
+            AliveCheck = true,
             WallCheck = false,
-            ShowFOV = true,        -- показывать круг
-            FOVColor = Color3.fromRGB(255, 255, 255),
-            FOVTransparency = 0.5
-        },
+            Sensitivity = 0,
+            ThirdPerson = false,
+            ThirdPersonSensitivity = 3,
+            TriggerKey = "MouseButton2",
+            Toggle = false,
+            LockPart = "Head"
+        }
+        Environment.FOVSettings = {
+            Enabled = true,
+            Visible = true,
+            Amount = 90,
+            Color = Color3.fromRGB(255, 255, 255),
+            LockedColor = Color3.fromRGB(255, 70, 70),
+            Transparency = 0.5,
+            Sides = 60,
+            Thickness = 1,
+            Filled = false
+        }
+    end
+
+    -- // ─── КОНЕЦ ВСТАВКИ АИМБОТА ──────────────────────────────
+
+    -- // ─── Состояния для спинбота и ESP ──────────────────────
+    local State = {
         Spinbot = { Enabled = false, Speed = 45, Direction = 1 },
         ESP = {
             Enabled = false,
@@ -41,25 +256,12 @@ local function AidaCheat()
         }
     }
 
-    -- // ─── Переменные ──────────────────────────────────────────
+    -- // ─── Переменные для спинбота и ESP ──────────────────────
     local SpinAngle = 0
     local ESPDrawings = {}
     local ChamsHighlights = {}
     local MainLoopConnection = nil
     local Watermark = nil
-    local FOVCircle = nil
-    local RMBPressed = false   -- состояние правой кнопки мыши
-
-    -- // ─── GUI: Окно ──────────────────────────────────────────
-    local Window = Fluent:CreateWindow({
-        Title = "✦ AIDA CHEAT v5.3",
-        SubTitle = "by Zao",
-        TabWidth = 130,
-        Size = UDim2.fromOffset(540, 520),
-        Acrylic = false,
-        Theme = "Dark",
-        MinimizeKey = Enum.KeyCode.LeftControl
-    })
 
     -- // ─── Водяной знак ──────────────────────────────────────
     local function CreateWatermark()
@@ -85,63 +287,42 @@ local function AidaCheat()
         Watermark = nil
     end
 
-    -- // ─── FOV Круг ────────────────────────────────────────────
-    local function CreateFOVCircle()
-        if FOVCircle then return end
-        FOVCircle = Drawing.new("Circle")
-        FOVCircle.Visible = false
-        FOVCircle.Radius = State.Aimbot.FOV
-        FOVCircle.Color = State.Aimbot.FOVColor
-        FOVCircle.Transparency = State.Aimbot.FOVTransparency
-        FOVCircle.NumSides = 60
-        FOVCircle.Filled = false
-        FOVCircle.Thickness = 1
-    end
-
-    local function UpdateFOVCircle()
-        if not FOVCircle then return end
-        if State.Aimbot.ShowFOV and State.Aimbot.Enabled then
-            FOVCircle.Visible = true
-            FOVCircle.Radius = State.Aimbot.FOV
-            FOVCircle.Position = UserInputService:GetMouseLocation()
-            FOVCircle.Color = State.Aimbot.FOVColor
-            FOVCircle.Transparency = State.Aimbot.FOVTransparency
-        else
-            FOVCircle.Visible = false
-        end
-    end
-
-    local function DestroyFOVCircle()
-        if FOVCircle then
-            pcall(function() FOVCircle:Remove() end)
-            FOVCircle = nil
-        end
-    end
+    -- // ─── GUI: Окно ──────────────────────────────────────────
+    local Window = Fluent:CreateWindow({
+        Title = "✦ AIDA CHEAT v5.4",
+        SubTitle = "by Zao",
+        TabWidth = 130,
+        Size = UDim2.fromOffset(540, 520),
+        Acrylic = false,
+        Theme = "Dark",
+        MinimizeKey = Enum.KeyCode.LeftControl
+    })
 
     -- // ─── Вкладка Aimbot ──────────────────────────────────────
     local AimbotTab = Window:AddTab({ Title = "Aimbot", Icon = "crosshair" })
     local AimbotSection = AimbotTab:AddSection("Main")
 
+    -- Привязываем к Environment.Settings
     local AimbotToggle = AimbotSection:AddToggle("AimbotEnabled", {
         Title = "Enable Aimbot (hold RMB)",
-        Default = false,
-        Callback = function(v) 
-            State.Aimbot.Enabled = v
+        Default = true,
+        Callback = function(v)
+            Environment.Settings.Enabled = v
             if not v then
-                FOVCircle.Visible = false
+                Running = false
+                CancelLock()
             end
         end
     })
 
     AimbotSection:AddSlider("AimbotFOV", {
         Title = "FOV",
-        Default = 120,
+        Default = 90,
         Min = 10,
         Max = 360,
         Rounding = 0,
-        Callback = function(v) 
-            State.Aimbot.FOV = v
-            if FOVCircle then FOVCircle.Radius = v end
+        Callback = function(v)
+            Environment.FOVSettings.Amount = v
         end
     })
 
@@ -151,57 +332,70 @@ local function AidaCheat()
         Min = 0,
         Max = 30,
         Rounding = 0,
-        Callback = function(v) State.Aimbot.Smoothness = v end
+        Callback = function(v)
+            Environment.Settings.Sensitivity = v
+        end
     })
 
     AimbotSection:AddDropdown("AimbotPart", {
         Title = "Target Part",
         Values = { "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart" },
         Default = "Head",
-        Callback = function(v) State.Aimbot.Part = v end
+        Callback = function(v)
+            Environment.Settings.LockPart = v
+        end
     })
 
-    AimbotSection:AddToggle("AimbotTeamCheck", {
+    local TeamCheckToggle = AimbotSection:AddToggle("AimbotTeamCheck", {
         Title = "Team Check",
         Default = false,
-        Callback = function(v) State.Aimbot.TeamCheck = v end
+        Callback = function(v)
+            Environment.Settings.TeamCheck = v
+        end
     })
 
-    AimbotSection:AddToggle("AimbotWallCheck", {
+    local WallCheckToggle = AimbotSection:AddToggle("AimbotWallCheck", {
         Title = "Wall Check",
         Default = false,
-        Callback = function(v) State.Aimbot.WallCheck = v end
+        Callback = function(v)
+            Environment.Settings.WallCheck = v
+        end
     })
 
-    -- // FOV настройки
+    -- // FOV Circle настройки (привязываем к Environment.FOVSettings)
     local FOVSection = AimbotTab:AddSection("FOV Circle")
     local FOVToggle = FOVSection:AddToggle("ShowFOV", {
         Title = "Show FOV Circle",
         Default = true,
         Callback = function(v)
-            State.Aimbot.ShowFOV = v
-            if not v and FOVCircle then FOVCircle.Visible = false end
+            Environment.FOVSettings.Visible = v
         end
     })
 
     local FOVColorPicker = FOVSection:AddColorpicker("FOVColor", {
         Title = "FOV Color",
-        Default = State.Aimbot.FOVColor,
+        Default = Environment.FOVSettings.Color,
         Callback = function(v)
-            State.Aimbot.FOVColor = v
-            if FOVCircle then FOVCircle.Color = v end
+            Environment.FOVSettings.Color = v
+        end
+    })
+
+    local FOVLockedColorPicker = FOVSection:AddColorpicker("FOVLockedColor", {
+        Title = "Locked Color",
+        Default = Environment.FOVSettings.LockedColor,
+        Callback = function(v)
+            Environment.FOVSettings.LockedColor = v
         end
     })
 
     FOVSection:AddSlider("FOVTransparency", {
-        Title = "FOV Transparency",
+        Title = "Transparency",
         Default = 0.5,
         Min = 0,
         Max = 1,
         Rounding = 2,
         Callback = function(v)
-            State.Aimbot.FOVTransparency = v
-            if FOVCircle then FOVCircle.Transparency = v end
+            Environment.FOVSettings.Transparency = v
         end
     })
 
@@ -298,7 +492,6 @@ local function AidaCheat()
 
     -- // Чармсы
     local ChamsSection = ESPTab:AddSection("Chams (Highlight)")
-
     local ChamsToggle = ChamsSection:AddToggle("ESPChams", {
         Title = "Enable Chams",
         Default = false,
@@ -523,34 +716,6 @@ local function AidaCheat()
         end
     end
 
-    -- // ─── Логика Aimbot ──────────────────────────────────────
-    local function FindTarget()
-        local closest = nil
-        local closestDist = State.Aimbot.FOV
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player == LocalPlayer then continue end
-            if not player.Character then continue end
-            local part = player.Character:FindFirstChild(State.Aimbot.Part)
-            if not part then continue end
-            local hum = player.Character:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then continue end
-            if State.Aimbot.TeamCheck and player.Team == LocalPlayer.Team then continue end
-            if State.Aimbot.WallCheck then
-                local obscured = #Camera:GetPartsObscuringTarget({part.Position}, player.Character:GetDescendants())
-                if obscured > 0 then continue end
-            end
-            local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
-            if not onScreen then continue end
-            local mousePos = UserInputService:GetMouseLocation()
-            local dist = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
-            if dist < closestDist then
-                closestDist = dist
-                closest = player
-            end
-        end
-        return closest
-    end
-
     -- // ─── Логика Spinbot ──────────────────────────────────────
     local function SpinbotLoop()
         if not State.Spinbot.Enabled then return end
@@ -564,64 +729,53 @@ local function AidaCheat()
         root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, math.rad(SpinAngle), 0)
     end
 
-    -- // ─── Главный цикл ──────────────────────────────────────────
+    -- // ─── Главный цикл (только спинбот и ESP) ────────────────
     local function MainLoop()
-        -- Обновляем FOV круг
-        UpdateFOVCircle()
-
-        -- Aimbot активен только если включен в GUI и зажата ПКМ
-        local aimbotActive = State.Aimbot.Enabled and RMBPressed
-
-        if aimbotActive then
-            local target = FindTarget()
-            if target and target.Character then
-                local part = target.Character:FindFirstChild(State.Aimbot.Part)
-                if part then
-                    local targetPos = part.Position
-                    local currentCF = Camera.CFrame
-                    local targetCF = CFrame.new(currentCF.Position, targetPos)
-                    local smooth = State.Aimbot.Smoothness
-                    if smooth == 0 then
-                        Camera.CFrame = targetCF
-                    else
-                        local lerp = 1 / (smooth + 1)
-                        Camera.CFrame = currentCF:Lerp(targetCF, lerp)
-                    end
-                end
-            end
-        end
-
         SpinbotLoop()
         UpdateESP()
     end
 
-    -- // ─── Обработка ввода (ПКМ) ──────────────────────────────
+    -- // ─── Активация аимбота по ПКМ ─────────────────────────────
+    -- Мы будем управлять переменной Running (из аимбота) через RMBPressed
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if input.UserInputType == Enum.UserInputType.MouseButton2 then
-            RMBPressed = true
+            -- Если аимбот включён в настройках, то активируем
+            if Environment.Settings.Enabled then
+                Running = true
+            end
         end
     end)
 
     UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if input.UserInputType == Enum.UserInputType.MouseButton2 then
-            RMBPressed = false
+            -- Если не используется режим Toggle (у нас Toggle = false)
+            if not Environment.Settings.Toggle then
+                Running = false
+                CancelLock()
+            end
         end
     end)
 
-    -- // ─── Запуск и очистка ──────────────────────────────────────
-    CreateWatermark()
-    CreateFOVCircle()
+    -- // ─── Запуск аимбота ──────────────────────────────────────
+    Load()  -- запускаем аимбот
 
+    -- // ─── Запуск спинбота и ESP ──────────────────────────────
     MainLoopConnection = RunService.RenderStepped:Connect(MainLoop)
 
+    -- // ─── Водяной знак ──────────────────────────────────────
+    CreateWatermark()
+
+    -- // ─── Горячие клавиши ──────────────────────────────────────
     UserInputService.InputBegan:Connect(function(input)
         if input.KeyCode == Enum.KeyCode.Insert then
             Window:Toggle()
         end
         if input.KeyCode == Enum.KeyCode.End then
+            -- Выгружаем всё
             if MainLoopConnection then MainLoopConnection:Disconnect() end
+            Environment.Functions:Exit() -- выгружаем аимбот
             for player, drawings in pairs(ESPDrawings) do
                 for _, obj in pairs(drawings) do
                     pcall(function() obj:Remove() end)
@@ -632,7 +786,6 @@ local function AidaCheat()
                 pcall(function() hl:Destroy() end)
             end
             ChamsHighlights = {}
-            DestroyFOVCircle()
             DestroyWatermark()
             Window:Destroy()
             print("AIDA CHEAT выгружен")
@@ -652,7 +805,7 @@ local function AidaCheat()
 
     Window:SelectTab(1)
     Fluent:Notify({
-        Title = "AIDA CHEAT v5.3",
+        Title = "AIDA CHEAT v5.4",
         Content = "by Zao | Insert – меню, End – выгрузить.\nАимбот активируется зажатием ПКМ",
         Duration = 5
     })
